@@ -47,9 +47,3 @@ We provide a scaled musculoskeletal model and motion data: inverse kinematics, i
 
 ## Contact 
 For further information or questions, feel free to reach me by email: ailp@kth.se
-
-## Simulation framework
-Our simulation framework is composed of three main scripts: 
-* Calibration of Muscle Passive forces
-* Simulation Workflows: Muscle-driven, EMG-informed, and parameter personalization
-* Metabolic Energy Models
