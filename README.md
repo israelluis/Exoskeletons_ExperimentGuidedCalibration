@@ -31,19 +31,19 @@ This tool optimizes an assistive moment that minimizes muscle activations. You c
 The scripts can be adapted to your research. We facilitate an example and experimental data for each script; see the folder “Code and example.” To run any of the tools, you first must follow the “Installation instructions.” Also, verify that Casadi and the main folder (Code and example) paths are added to your current Matlab session.
 <br>
 - File: example_fiberLengthsCal.m <br>
-  Objective: Calibrates muscle fiber lengths with provided digitalized values.
+  Objective: Calibrates muscle fiber lengths with provided digitalized values. <br>
   Outcome: Optimized optimal fiber lengths, tendon slack lengths, and tendon stiffness
  
 - File: example_passMomCal.m <br>
-  Objective: Calibrates passive angle-moment relationships at various ankle, knee, and hip joint angles. Digitalized data provided.
+  Objective: Calibrates passive angle-moment relationships at various ankle, knee, and hip joint angles. Digitalized data provided. <br>
   Outcome: Optimized muscle passive force-length curves
   
 - File: example_fiberLength_PassCal.m <br>
-  Objective: To calibrate muscle fiber lengths and passive angle-moment relationships. Digitalized data provided.
+  Objective: To calibrate muscle fiber lengths and passive angle-moment relationships. Digitalized data provided. <br>
   Outcome: Optimized optimal fiber lengths, tendon slack lengths, tendon stiffness, and muscle passive force-length curves
   
 - File: example_exoskeleton.m <br>
-  Objective: To compute the optimal assistance based on spring-like and motor-like actuation systems to support plantarflexors. Additionally, we added an example where you can create your own assistive moment to support knee extensors. You need to run "example_fiberLength_PassCal.m" as this example requires optimized values previously computed.
+  Objective: To compute the optimal assistance based on spring-like and motor-like actuation systems to support plantarflexors. Additionally, we added an example where you can create your own assistive moment to support knee extensors. You need to run "example_fiberLength_PassCal.m" as this example requires optimized values previously computed. <br>
   Outcome: Optimal assistive moment and corresponding muscle-tendon dynamics.
   
 <br>
