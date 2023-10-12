@@ -41,7 +41,7 @@ param_label={'FMo' 'lMo' 'lTs' 'alphao' 'vMmax' 'kpe' 'so' 'sM'};
 Misc.param_label   =param_label;
 
 % run muscle analysis
-Misc.RunAnalysis = 0;
+Misc.RunAnalysis = 1;
 
 % Adjust semimem
 % semimen's tendon needs to be adjusted as fiber length is, otherwise, too short. 
