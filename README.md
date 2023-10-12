@@ -29,24 +29,29 @@ This tool optimizes an assistive moment that minimizes muscle activations. You c
 
  ## Run example
 The scripts can be adapted to your research. We facilitate an example and experimental data for each script; see the folder “Code and example.” To run any of the tools, you first must follow the “Installation instructions.” Also, verify that Casadi and the main folder (Code and example) paths are added to your current Matlab session.
-- Example: calibration of muscle fiber lengths
-Run "muscle-"
-- Example: calibration of the passive angle-moment relationship
-
-- Example: calibration of muscle fiber lengths and passive angle-moment relationship
-
-- Example: exoskeleton with calibrated parameters
+<br>
+- File: example_fiberLengthsCal.m
+  Objective: Calibrates muscle fiber lengths with provided digitalized values.
+  Outcome: Optimized optimal fiber lengths, tendon slack lengths, and tendon stiffness
+ 
+- File: example_passMomCal.m
+  Objective: Calibrates passive angle-moment relationships at various ankle, knee, and hip joint angles. Digitalized data provided.
+  Outcome: Optimized muscle passive force-length curves
   
-The three scripts combined allow you to compute the lower limb’s metabolic rate estimations using a simulation workflow and metabolic energy model used in our study. In order to obtain such a result, you must follow the following steps:
-2) Run the script “Calibration_passiveForces.” This script serves to calibrate passive force parameters in a generic musculoskeletal model. As a result, it will provide a summary of the calibrated parameters, store the results, and plot the graph: experimental, calibrated, and generic passive torque-angle curves.
-3) Run the script “Pipeline_simulationFramework.” This script serves to select the simulation workflow you want to use. It specifies the features for the simulation and uses the function “setupAndRun” to run the code. As a result, it will provide multiple graphs with information about the muscle activations, normalized fiber length, fiber length, and reserve actuators. Note: You must run “Calibration_passiveForces” first, as this script requires generic or calibrated passive parameters.
-4) Run the script “Compute_metabolicRates.” This script serves to compute metabolic rates based on the muscle excitation, states, and state derivatives previously obtained from the MRS. We provide the implementation of various metabolic energy models; you can select any. As a result, it will provide estimates of the metabolic rates, work rates, and heat rates per muscle. Note: You need to run “Pipeline_simulationFramework,” as this script requires muscle-tendon states to compute the metabolic rates.
+- File: example_fiberLength_PassCal.m
+  Objective: To calibrate muscle fiber lengths and passive angle-moment relationships. Digitalized data provided.
+  Outcome: Optimized optimal fiber lengths, tendon slack lengths, tendon stiffness, and muscle passive force-length curves
+  
+- File: example_exoskeleton.m
+  Objective: To compute the optimal assistance based on spring-like and motor-like actuation systems to support plantarflexors. Additionally, we added an example where you can create your own assistive moment to support knee extensors.
+  Outcome: Optimal assistive moment and corresponding muscle-tendon dynamics.
+  
 <br>
 Also, each script provides a description of the computation performed.
 <br>
 
 #### About the experimental data 
-We provide a scaled musculoskeletal model and motion data: inverse kinematics, inverse dynamics, and EMGs of a subject walking at slow, normal, and fast speeds.  Please take a look at our studies for more details.
+We provide a scaled musculoskeletal model and motion data: inverse kinematics, inverse dynamics, of a subject walking at a preferred speed. Digitalized data is also provided. Please take a look at our studies for more details.
 <br>
 
 ## Contact 
