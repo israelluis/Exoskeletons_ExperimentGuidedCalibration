@@ -31,7 +31,7 @@ param_label={'FMo' 'lMo' 'lTs' 'alphao' 'vMmax' 'kpe' 'so' 'sM'};
 Misc.param_label   =param_label;
 
 % run muscle analysis
-Misc.GetAnalysis = 0;
+Misc.GetAnalysis = 1;
 
 % WORKFLOW SETUP
 % Here we setup 3 workflows.
