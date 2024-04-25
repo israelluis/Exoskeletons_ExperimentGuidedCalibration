@@ -4,7 +4,7 @@ In this repository, we provide a simulation framework to calibrate muscle-tendon
 - Experiment-guided calibration of muscle fiber lengths and passive forces
 - Springs vs. motors: Optimal assistance to support walking across speeds
 <br>
-This is a work in collaboration with VU Amsterdam. The MatLab scripts are derived from the muscle redundancy solver from KULeuvenNeuromechanics.
+This is a work in collaboration with VU Amsterdam. The MatLab scripts are a modified version of the muscle redundancy solver from KULeuvenNeuromechanics.
 <br>
 
 ## Installation instructions
