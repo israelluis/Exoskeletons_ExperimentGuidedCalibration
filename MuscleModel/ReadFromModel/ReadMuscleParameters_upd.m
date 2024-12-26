@@ -64,7 +64,7 @@ if  isfield(Misc,'updParams') %|| ~isempty(Misc.updParams)
         
         ind=zeros(nMuscles,1);
         for j=1:nMuscles
-            ind(j)=find(strcmp(names,[names_upd{j} '_' Misc.side_sel]));
+            ind(j)=find(strcmp(names,[names_upd{j} '_' Misc.side_sel])); %
         end
         
         % apply change

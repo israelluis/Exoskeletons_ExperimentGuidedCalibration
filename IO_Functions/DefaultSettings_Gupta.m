@@ -1,4 +1,4 @@
-function [Misc] = DefaultSettings(Misc)
+function [Misc] = DefaultSettings_Gupta(Misc)
 % --------------------------------------------------------------------------
 %DefaultSettings
 %     If user does not specify values for specific Misc fields, these are
