@@ -145,17 +145,48 @@ if workFlow_Exo_Any==1
     Misc.Exo_Dof={['hip_flexion_' Misc.side_sel]}; Misc.Exo_group=+1; % hip flexion + / hip extension -
     Misc.OutName= 'hipExo_any';
 
-    % generate a torque profile
-    % any moment can be added to Misc.torqueProfile. For simplicity I use a sin function
-    t_exo=[30 60];             % percentage of gait cycle you want to create the torque
-    t_d=t_exo(end)-t_exo(1)+1; % duration of assistance
-    ang=linspace(0,pi,t_d);    % moment as a sine function 
-    torqueSine=sin(ang);       % moment as a sine function
+    % Parameters
+    gait_cycle = 0:0.1:100; % Gait cycle from 0% to 100% in steps of 0.1%
+    start_time = 58;         % Start time of the assistive torque profile (in % of gait cycle)
+    end_time = start_time + 32.5;          % End time of the assistive torque profile (in % of gait cycle)
+    peak_times = start_time + 12.5 ; %[5, 10, 15, 20, 25]; % Peak times incremented by 5%
+    peak_torque = 15;       % Peak assistive torque in Nm
+    
+    % Preallocate storage for profiles
+    profiles = zeros(length(peak_times), length(gait_cycle));
+    
+    % Generate profiles
+    for i = 1:length(peak_times)
+        T_peak = peak_times(i); % Current peak time
+        for t = 1:length(gait_cycle)
+            if gait_cycle(t) >= start_time && gait_cycle(t) <= end_time
+                % Normalize time to the range [0, π] for a half-sinusoidal wave
+                if gait_cycle(t) <= T_peak
+                    % Rising part: from start_time to T_peak
+                    norm_time = (gait_cycle(t) - start_time) / (T_peak - start_time);
+                    profiles(i, t) = peak_torque * sin(pi * norm_time / 2);
+                else
+                    % Falling part: from T_peak to end_time
+                    norm_time = (gait_cycle(t) - T_peak) / (end_time - T_peak);
+                    profiles(i, t) = peak_torque * cos(pi * norm_time / 2);
+                end
+            else
+                profiles(i, t) = 0; % Outside assistive range
+            end
+        end
+    end
 
-    peak= 30;                  % peak moment
-    torqueAssistive=zeros(1,100);
-    torqueAssistive(t_exo(1):t_exo(2))=torqueSine.*peak;
-    Misc.torqueProfile(1)={torqueAssistive}; % plot this if you want to visualize moment profile
+    % % generate a torque profile
+    % % any moment can be added to Misc.torqueProfile. For simplicity I use a sin function
+    % t_exo=[25 75];             % percentage of gait cycle you want to create the torque
+    % t_d=t_exo(end)-t_exo(1)+1; % duration of assistance
+    % ang=linspace(0,pi,t_d);    % moment as a sine function 
+    % torqueSine=sin(ang);       % moment as a sine function
+    % 
+    % peak= 10;                  % peak moment
+    % torqueAssistive=zeros(1,100);
+    % torqueAssistive(t_exo(1):t_exo(2))=torqueSine.*peak;
+    Misc.torqueProfile(1)={profiles}; % plot this if you want to visualize moment profile
 
     [Results_hipExo_any,DatStore,Misc] = solveMuscleRedundancy_ExoCal(model_path,time,OutPath,Misc);
 end
@@ -169,8 +200,8 @@ if workFlow_Exo_PGM==1
     % generate a torque profile based on PGM parametrization
     % control profile parameters
     PGMparam.torque.stiffness =1200; % [N/m]
-    PGMparam.torque.startTime = 50; % [gait cycle %]
-    PGMparam.torque.duration  = 30; % [gait cycle %]
+    PGMparam.torque.startTime = 58; % [gait cycle %]
+    PGMparam.torque.duration  = 32.5; % [gait cycle %]
     
     % user characteristics
     PGMparam.user.proximal_marker_reference = 'RASI';
