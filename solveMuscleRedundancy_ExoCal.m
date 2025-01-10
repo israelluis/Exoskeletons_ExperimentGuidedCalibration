@@ -104,6 +104,8 @@ NMuscles = length(DatStore(1).MuscleNames);
 % Extract the muscle-tendon properties
 [Misc.params,Misc.lMo,Misc.lTs,Misc.FMo,Misc.alphao,Misc.kT,Misc.shift]=ReadMuscleParameters_upd(model_path,DatStore(1).MuscleNames,Misc);
 
+[Misc]=ApplyCustomMadeForceChanges(Misc,DatStore(1).MuscleNames);
+
 % Static optimization using IPOPT solver (used as an initial guess)
 for trial = 1:Misc.nTrials
     DatStore    = SolveStaticOptimization_IPOPT_CasADi(DatStore,Misc,trial,0);
@@ -511,6 +513,9 @@ if Misc.Exo_Enable
         end
     end
 end
+%% Muscle Factors
+MuscProperties_factor=Misc.forGen.actFM.out.percentages;
+
 %% Implemetation of controls, states and states derivatives
 N_acc = 0; % Index that keeps track of trials that are accumulated
 % Loop over trials --> one simulation for each trial
@@ -537,7 +542,7 @@ for trial = 1:Misc.nTrials
         
         % Get muscle-tendon forces and derive Hill-equilibrium
         [Hilldiffk,FTk] = ForceEquilibrium_lMtildeState_optPassive(ak,lMtildek,vMtildek,lM_projectedk,...
-            DatStore(trial).LMTinterp(k,:)',MuscProperties_params',MuscProperties_kT',MuscProperties_shift'); 
+            DatStore(trial).LMTinterp(k,:)',MuscProperties_params',MuscProperties_factor,MuscProperties_kT',MuscProperties_shift'); 
         
         % Add path constraints
         % Moment constraints
@@ -722,3 +727,19 @@ save(fullfile(OutPath,[Misc.OutName 'Results.mat']),'Results','DatStore','Misc')
 end
 
 
+function [Misc] = ApplyCustomMadeForceChanges(Misc,names)
+
+names_upd =Misc.forGen.actFM.names;
+% update if all muscle include
+if strcmp(names_upd,'all');names_upd= cellfun(@(x) x(1:end-2), names, 'un', 0); end
+nMuscles_upd  =length(names_upd);
+nMuscles_all  =length(names);
+
+ind=zeros(nMuscles_upd,1);
+for j=1:nMuscles_upd
+    ind(j)=find(strcmp(names,[names_upd{j} '_' Misc.side_sel])); %
+end
+
+Misc.forGen.actFM.out.percentages=ones(1,nMuscles_all);
+Misc.forGen.actFM.out.percentages(ind)=Misc.forGen.actFM.percentages;
+end

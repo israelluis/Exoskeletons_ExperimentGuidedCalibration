@@ -79,7 +79,7 @@ end
 %% Input information
 
 % paths and folders
-OutPath      = fullfile(currentFolder,'Results_Exo');  
+OutPath        = fullfile(currentFolder,'Results_bilevel');  % NEW FOR BILEVEL!
 
 % experimental data
 Misc.IKfile = {fullfile(currentFolder,ExampleFolder,'IK','IK.mot')};
@@ -110,7 +110,7 @@ param_label={'FMo' 'lMo' 'lTs' 'alphao' 'vMmax' 'kpe' 'so' 'sM'};
 Misc.param_label   =param_label;
 
 % run muscle analysis
-Misc.GetAnalysis = 0;
+Misc.GetAnalysis = 1; % RUN ONCE IF THERE IS NEW OutPath@
 
 % We will use previously optimized lMo, lTs, kT, and passive force-length
 % curves. Run "example_fiberLength_PassCal" to have access to the optimized values
@@ -126,13 +126,7 @@ Misc.wVm    =    0.01;
 
 % WORKFLOW SETUP -----------------------------------------------------------
 % Normal : no assistive moment
-% Exo_any: any profile
-% Exo_PGM: self selected values
-
 workFlow_Normal      = 1;
-workFlow_Weak        = 1;
-workFlow_Exo_Any     = 1;
-workFlow_Exo_PGM     = 1;
 
 % setting act-force generation strength, normal ---------------------------
 Misc.forGen.actFM.names       ={};
@@ -144,177 +138,139 @@ if workFlow_Normal== 1
     [Results_normal,DatStore,Misc] = solveMuscleRedundancy_ExoCal(model_path,time,OutPath,Misc);
 end
 
-% setting act-force generation strength, weak -----------------------------
-Misc.forGen.actFM.names       ={'rect_fem' 'psoas' 'iliacus'}; % just an example
-Misc.forGen.actFM.percentages =[0.5 0.5 0.5]; % i.e., these are the new values
+[J_normalized,Edot_normal_TS] = computeOuterLoopFunction(Misc,Results_normal); % this is my starting point, the Edot at unassisted conditions.
+%%
+% -------------------------------------------------------------------------
+% Everything before is as in "hip_exoskeleton.m"
+% The interesting part starts now....
+% -------------------------------------------------------------------------
+%% Bilevel formulation
+% Here we will use Bayesian optimization. According to my previous study,
+% Bayesian converges faster than Particle Swarm optimization and Genetic
+% algorithm. I chose Bayesian for this implementation
+% Here are the main components
+% 
+% - OUTER LEVEL
+% OPT=Bayesian Optimization, AIM=min(E)
+% - INNER LEVEL
+% OPT=Direct collocation, AIM=min(a^2)
+% - PARAMETRIZATION
+% PGM: stiffness, start time, duration 
+%% Loading
+% run muscle analysis
+Misc.GetAnalysis = 0;
 
-if workFlow_Normal== 1
-    Misc.OutName= 'weak';
-    [Results_weak,DatStore,Misc] = solveMuscleRedundancy_ExoCal(model_path,time,OutPath,Misc);
-end
-
-% setting act-force generation strength, normal ----------------------------
-Misc.forGen.actFM.names       ={};
-Misc.forGen.actFM.percentages =[]; % all muscles are 100% strength by default
-
+Misc.model_path= model_path;
+Misc.time      = time;
+Misc.OutPath   = OutPath;
+Misc.trc_time  = trc_time;
+%% Actuator characteristics, not affected by control
+% Geometry does not change based on the actuator assistive magnitude, it
+% can be computed before.
+% SETUP FOR EXO SIMULATION
 Misc.Exo_Enable    = 1; % exo enabled
-if workFlow_Exo_Any==1
-    Misc.Exo_Mode='manual'; Misc.Exo_Type="active";
-    Misc.Exo_Dof={['hip_flexion_' Misc.side_sel]}; Misc.Exo_group=+1; % hip flexion + / hip extension -
-    Misc.OutName= 'hipExo_any';
+Misc.Exo_Mode="manual"; Misc.Exo_Type="active";
+Misc.Exo_Dof={['hip_flexion_' Misc.side_sel]}; Misc.Exo_group=+1; % hip flexion + / hip extension -
+Misc.OutName= 'hipExo_PGM';
 
-    % generate a torque profile
-    % any moment can be added to Misc.torqueProfile. For simplicity I use a sin function
-    t_exo=[50 80];             % percentage of gait cycle you want to create the torque
-    t_d=t_exo(end)-t_exo(1)+1; % duration of assistance
+% SETUP FOR ACTUATOR
+% user characteristics
+PGMparam.user.proximal_marker_reference = 'RASI';
+PGMparam.user.proximal_marker_offset    = [0.0 0.0]; % [m] - respect to marker reference (I cannot be any other value)
+PGMparam.user.distal_marker_reference   = 'RKNE';
+PGMparam.user.distal_marker_offset      = [0.0 0.0]; % [m] - respect to marker reference (I cannot be any other value)
+PGMparam.user.HJC_marker_reference      = 'RHJC_cgm24';
 
-    option_actuation=2; % 1 as a torque, 2 as a force
+% instrinsic actuator properties
+PGMparam.actuator.slack_length = 0.20; % [m]
+PGMparam.actuator.time_lag     = 0.01; % [s] (tau)
 
-    if option_actuation==1 % as a torque
-    % OPTION 1
-    ang=linspace(0,pi,t_d);    % moment as a sine function
-    torqueSine=sin(ang);       % moment as a sine function
-    peak= 10;                  % peak moment [Nm]
-    torqueAssistive=zeros(1,100);
-    torqueAssistive(t_exo(1):t_exo(2))=torqueSine.*peak;
-    Misc.torqueProfile(1)={torqueAssistive}; % plot this if you want to visualize moment profile
+opt_visual.flag        = 0;
+opt_visual.marker_list = markers_list;
+PGMparam               = DEVactuation_geometry(PGMparam,trc_header,trc_time,trc_data_conv,markers_list,opt_visual); % compute actuator: length and moment arm
 
-    elseif option_actuation==2 % as a force
-    % OPTION 2
-    ang=linspace(0,pi,t_d);    % moment as a sine function
-    ForceSine=sin(ang);        % moment as a sine function
-    peak= 300;                  % peak force [N]    
-    ForceAssistive=zeros(1,100);
-    ForceAssistive(t_exo(1):t_exo(2))=ForceSine.*peak;
+%% Framework bilevel
 
-    % user characteristics
-    DEVparam.user.proximal_marker_reference = 'RASI';
-    DEVparam.user.proximal_marker_offset    = [0.0 0.0]; % [m] - respect to marker reference (I cannot be any other value)
-    DEVparam.user.distal_marker_reference   = 'RKNE';
-    DEVparam.user.distal_marker_offset      = [0.0 0.0]; % [m] - respect to marker reference (I cannot be any other value)
-    DEVparam.user.HJC_marker_reference      = 'RHJC_cgm24';    
+% DEFINITION OF VARIABLES
+% name      K    t_s   d  
+% units     N/m  %GC  %GC
+lb_list=[   1    50    5]; % lower bound
+ub_list=[1500    70   25]; % upper bound, to be aware: MAX(t_s)+MAX(d)<=100%, because exo torque cannot exceed a full gait cycle (100%) 
+nvars  =3;
 
-    opt_visual.flag        = 1;
-    opt_visual.marker_list = markers_list;
-    DEVgeometry            = DEVactuation_geometry(DEVparam,trc_header,trc_time,trc_data_conv,markers_list,opt_visual); % compute actuator: length and moment arm
-
-    DEVind=find((trc_time>=time(1)) & (trc_time<=time(end)));
-    DEV_moment_arm=DEVgeometry.geometry.moment_arm(DEVind); 
-
-    time_spline = linspace(time(1),time(end),100);
-    ma_spline   = spline(trc_time(DEVind),DEV_moment_arm,time_spline);
-
-    torqueAssistive=ma_spline.*ForceAssistive;
-    Misc.torqueProfile(1)={torqueAssistive}; % plot this if you want to visualize moment profile
-    end
-
-    [Results_hipExo_any,DatStore,Misc] = solveMuscleRedundancy_ExoCal(model_path,time,OutPath,Misc);
+var_containers = [];
+for i = 1:nvars
+    var_name = ['var', num2str(i)]; % Generate variable name dynamically
+    var_i = optimizableVariable(var_name, [lb_list(i), ub_list(i)]); % v1 = optimizableVariable('var1',[lb(1) ub(1)]);
+    var_containers = [var_containers, var_i]; % Append the new variable to the array
 end
 
-Misc.Exo_Enable    = 1; % exo enabled
-if workFlow_Exo_PGM==1
-    Misc.Exo_Mode="manual"; Misc.Exo_Type="active";
-    Misc.Exo_Dof={['hip_flexion_' Misc.side_sel]}; Misc.Exo_group=+1; % hip flexion + / hip extension -
-    Misc.OutName= 'hipExo_PGM';
+% FUNCTION TO BE EVALUATED, INNER OPTIMIZER IS WITHIN THIS FUNCTION
+funMRS = @(x) MuscleRedundancyAndFuncAnalysis(Misc,PGMparam,{x},J_normalized); 
 
-    % generate a torque profile based on PGM parametrization
-    % control profile parameters
-    PGMparam.torque.stiffness =1200; % [N/m]
-    PGMparam.torque.startTime =  50; % [gait cycle %]
-    PGMparam.torque.duration  =  20; % [gait cycle %]
-    
-    % user characteristics
-    PGMparam.user.proximal_marker_reference = 'RASI';
-    PGMparam.user.proximal_marker_offset    = [0.0 0.0]; % [m] - respect to marker reference (I cannot be any other value)
-    PGMparam.user.distal_marker_reference   = 'RKNE';
-    PGMparam.user.distal_marker_offset      = [0.0 0.0]; % [m] - respect to marker reference (I cannot be any other value)
-    PGMparam.user.HJC_marker_reference      = 'RHJC_cgm24';
+% SETUP AND RUN THE OUTER OPTIMIZER
+MaxObjectiveEvaluations=10;
+resultsBayesopt = bayesopt(funMRS,var_containers,'IsObjectiveDeterministic',true,"MaxObjectiveEvaluations",MaxObjectiveEvaluations,"UseParallel",false); %,"UseParallel",true
 
-    % instrinsic actuator properties
-    PGMparam.actuator.slack_length = 0.20; % [m]
-    PGMparam.actuator.time_lag     = 0.01; % [s] (tau)
+%% Summary of results
+clc;
+MinObjective=resultsBayesopt.MinObjective;
+paramsAtIters=resultsBayesopt.XTrace;
+valuesAtIters=resultsBayesopt.ObjectiveTrace;
 
-    opt_visual.flag        = 1;
-    opt_visual.marker_list = markers_list;
-    PGMparam               = DEVactuation_geometry(PGMparam,trc_header,trc_time,trc_data_conv,markers_list,opt_visual); % compute actuator: length and moment arm
-   
-    opt_visual.flag       = 1;
-    [PGMforce,PGMmoment]  = PGMactuation_force(PGMparam,trc_time,time,opt_visual);
-    Misc.torqueProfile(1) = {PGMmoment}; % plot this if you want to visualize moment profile
+bestIter  =find(valuesAtIters==MinObjective);
+bestParams=paramsAtIters(bestIter,:);
+bestParams_val=[bestParams.var1 bestParams.var2 bestParams.var3]; % CHECK YOUR RESULTS (1!)
+range_list=ub_list-lb_list;
 
-    [Results_hipExo_PGM,DatStore,Misc] = solveMuscleRedundancy_ExoCal(model_path,time,OutPath,Misc);
-end
-%% Compute metabolic rates
-% metabolic rates is compute based on several models, I chose bargh to
-% append it in the result field, it is called Edot
+bestParams_per=(bestParams_val-lb_list)./range_list*100;
 
-% get the mass of the subject using the function GetModelMass
-modelmass = getModelMass(Misc.model_path);
+disp(['outer objective, metabolic cost change ' num2str(MinObjective,'%1.2f') '%'])
+disp('optimal control parameters:');
+disp(['stiffness= ' num2str(bestParams_val(1),'%1.0f') 'KN/m, [limits,' num2str(bestParams_per(1),'%1.1f') '%]']);
+disp(['start time= ' num2str(bestParams_val(2),'%1.1f')  '%GC, [limits,' num2str(bestParams_per(2),'%1.1f') '%]']);
+disp(['duration= ' num2str(bestParams_val(3),'%1.1f')  '%GC, [limits,' num2str(bestParams_per(3),'%1.1f') '%]']);
+%% Get results from best iteration
 
-% use the post processing function to compute the metabolic energy consumption
-Results_normal.E= GetMetabFromMRS(Results_normal,Misc,modelmass);
-Results_normal.Edot.genericMRS=Results_normal.E.genericMRS.Bargh2004.Edot;
+% generate a torque profile based on PGM parametrization
+% control profile parameters
+PGMparam.torque.stiffness = bestParams_val(1); % [N/m]
+PGMparam.torque.startTime = bestParams_val(2); % [gait cycle %]
+PGMparam.torque.duration  = bestParams_val(3); % [gait cycle %]
 
-Results_weak.E= GetMetabFromMRS(Results_weak,Misc,modelmass);
-Results_weak.Edot.genericMRS=Results_weak.E.genericMRS.Bargh2004.Edot;
+opt_visual.flag       = 0;
+[~,PGMmoment]  = PGMactuation_force(PGMparam,trc_time,time,opt_visual);
+Misc.torqueProfile(1) = {PGMmoment}; % plot this if you want to visualize moment profile
+[Result,~,Misc] = solveMuscleRedundancy_ExoCal(model_path,time,OutPath,Misc);
 
-Results_hipExo_any.E= GetMetabFromMRS(Results_hipExo_any,Misc,modelmass);
-Results_hipExo_any.Edot.genericMRS=Results_hipExo_any.E.genericMRS.Bargh2004.Edot;
+[J_best,Edot_bilevel_TS] = computeOuterLoopFunction(Misc,Result);
+%% Plot best iteration
 
-Results_hipExo_PGM.E= GetMetabFromMRS(Results_hipExo_PGM,Misc,modelmass);
-Results_hipExo_PGM.Edot.genericMRS=Results_hipExo_PGM.E.genericMRS.Bargh2004.Edot;
-%% Plotting moments
-time        =Results_hipExo_any.Time.genericMRS(1:end-1); % both simulation have the same inputs: IK, ID, and model
-gait_cycle  =linspace(0,100,length(time));
-hipExo_any_T=Results_hipExo_any.Texo.T;
-hipExo_PGM_T=Results_hipExo_PGM.Texo.T;
-
-figure(10)
-hold on;
-plot(gait_cycle,hipExo_any_T,'b')
-plot(gait_cycle,hipExo_PGM_T,'r')
-xlabel('time'); ylabel('moment (Nm)');
-legend('manual','PGM')
-%% Plotting and computing metabolic rate changes (net metabolic cost)
-
-MuscleNames= DatStore.MuscleNames;
-NMuscle    = length(MuscleNames);
-
-Edot_normal      =Results_normal.Edot.genericMRS;
-Edot_normal_TS   =sum(Edot_normal)/NMuscle;
-Edot_normal_mean =mean(Edot_normal_TS)*2; % 2 legs
-
-Edot_weak        =Results_weak.Edot.genericMRS;
-Edot_weak_TS     =sum(Edot_weak)/NMuscle;
-Edot_weak_mean   =mean(Edot_weak_TS)*2; % 2 legs
-
-Edot_case1       =Results_hipExo_any.Edot.genericMRS;
-Edot_case1_TS    =sum(Edot_case1)/NMuscle;
-Edot_case1_mean  =mean(Edot_case1_TS)*2; % 2 legs
-
-Edot_case2       =Results_hipExo_PGM.Edot.genericMRS;
-Edot_case2_TS    =sum(Edot_case2)/NMuscle;
-Edot_case2_mean  =mean(Edot_case2_TS)*2; % 2 legs
-
-figure(20); clf
-subplot(1,2,1); hold on
-plot(gait_cycle,Edot_normal_TS,'k','LineWidth',4)
-plot(gait_cycle,Edot_weak_TS,'b','LineWidth',4)
-plot(gait_cycle,Edot_case1_TS,':g','LineWidth',4)
-plot(gait_cycle,Edot_case2_TS,':r','LineWidth',4)
-xlabel('gait cycle [%]'); ylabel('metabolic rates, time series (one leg) [W/kg]')
+torque_length=length(Misc.torqueProfile{1});
+gait_cycle=linspace(0,100,torque_length);
+subplot(2,2,1);
+plot(gait_cycle,Misc.torqueProfile{1});
 set(gca,'FontSize',15);
+ylabel('moment [Nm]')
 title('time series')
 
-subplot(1,2,2);
+subplot(2,2,3);
+plot(gait_cycle(1:end-1),Edot_normal_TS,'k'); hold on
+plot(gait_cycle(1:end-1),Edot_bilevel_TS,'r'); hold on
+set(gca,'FontSize',15);
+ylabel('metabolic rates (one leg) [W/kg]')
+title('time series')
 
-x_label={'Normal' 'Weak' 'Exo any' 'Exo PGM'};
+J_real=(mean(Edot_bilevel_TS)-mean(Edot_normal_TS))/mean(Edot_normal_TS)*100; % CHECK YOUR RESULTS (2!)
+
+subplot(1,2,2);
+x_label={'Normal' 'Bilevel'};
 X = categorical(x_label);
 X = reordercats(X,x_label);
 
-data_val=[Edot_normal_mean Edot_weak_mean Edot_case1_mean Edot_case2_mean];
+data_val=[J_normalized J_best];
 
-color_bar={'k' 'b' 'g' 'r'};
+color_bar={'k' 'r'};
 
 for j=1:length(x_label)
     data= data_val(j);
@@ -329,50 +285,65 @@ for j=1:length(x_label)
     end
 end
 set(gca,'FontSize',15);
-ylabel('metabolic rates, mean values (both legs) [W/kg]')
+ylabel('metabolic rates (both legs) [W/kg]')
 title('mean values')
-%% Ploting all results with assistive moments
-state_list={'MActivation' 'Edot'}; %'TForce'
+%%
+function [J] = MuscleRedundancyAndFuncAnalysis(Misc,PGMparam,exoParam,J_normalized)
+% UNLOADING
+model_path= Misc.model_path;
+time      = Misc.time;
+OutPath   = Misc.OutPath;
+trc_time  = Misc.trc_time;
 
-% yaxis_values ={[0 1] [0 200]}; % [0 1500]
-title_list={'muscle activations in normal and assisted conditions' 'metabolic rates in normal and assisted conditions'};
-yaxis_list={'muscle activations [ ] ' 'metabolic rates [W]'};
+% generate a torque profile based on PGM parametrization
+% control profile parameters
+PGMparam.torque.stiffness = exoParam{1}.var1; % [N/m]
+PGMparam.torque.startTime = exoParam{1}.var2; % [gait cycle %]
+PGMparam.torque.duration  = exoParam{1}.var3; % [gait cycle %]
 
-MuscleNames= DatStore.MuscleNames;
-NMuscle    = length(MuscleNames);
+opt_visual.flag       = 0;
+[~,PGMmoment]  = PGMactuation_force(PGMparam,trc_time,time,opt_visual);
+Misc.torqueProfile(1) = {PGMmoment}; % plot this if you want to visualize moment profile
 
-extra_frames=5;
-
-for state_opt=1:length(state_list)
-fig=figure(10+state_opt); set(gcf,'color','w','Visible','on'); clf;   
-
-for mus_sel=1:NMuscle
-    muscle_name=MuscleNames{mus_sel};
-    normal =Results_normal.(state_list{state_opt}).genericMRS(mus_sel,1+extra_frames:end-extra_frames);
-    weak   =Results_weak.(state_list{state_opt}).genericMRS(mus_sel,1+extra_frames:end-extra_frames);
-    case_1 =Results_hipExo_any.(state_list{state_opt}).genericMRS(mus_sel,1+extra_frames:end-extra_frames);
-    case_2 =Results_hipExo_PGM.(state_list{state_opt}).genericMRS(mus_sel,1+extra_frames:end-extra_frames);
-    
-    x_axis      =linspace(0,100,length(normal));
-    
-    subplot(5,9,mus_sel)
-    hold on;
-    plot(x_axis,normal,'color',	'k','lineWidth',3,'lineStyle','-');
-    plot(x_axis,weak,'color',	'b','lineWidth',3,'lineStyle',':');
-    plot(x_axis,case_1,'color',	'g','lineWidth',3,'lineStyle',':');
-    plot(x_axis,case_2,'color',	'r','lineWidth',3,'lineStyle',':');
-    % ylim(yaxis_values{state_opt});
-    set(gca,'FontSize',10);
-    title(muscle_name)
+% RUN THE INNER LOOP
+try
+    [Result,~,Misc] = solveMuscleRedundancy_ExoCal(model_path,time,OutPath,Misc);
+    [J,~]=computeOuterLoopFunction(Misc,Result);
+catch ME
+     J=100; % if simulation fails, the optimizer does not benefit from it
 end
-sgtitle(title_list(state_opt),'fontSize',20)
 
-han=axes(fig,'visible','off'); 
-han.Title.Visible='on';
-han.XLabel.Visible='on';
-han.YLabel.Visible='on';
-label_y = ylabel(han,yaxis_list{state_opt},'FontSize',17); label_y.Position(1) = -0.05; label_y.Position(2) = 0.5;
-label_x = xlabel(han,'gait cycle [%]'       ,'FontSize',17);   label_x.Position(1) = 0.5; label_x.Position(2) = -0.05;
+J=(J-J_normalized)/J_normalized*100; % as a percentage of the unassisted condition
+end
+
+function [J,Edot_normal_TS]=computeOuterLoopFunction(Misc,Results)
+
+% window of analysis
+frame_extra=5;
+fSel=1+frame_extra:size(Results.MActivation.genericMRS,2)-1-frame_extra;
+
+% number of muscles
+NMuscle=length(Results.MuscleNames);
+
+% get the mass of the subject using the function GetModelMass
+modelmass = getModelMass(Misc.model_path);
+
+% use the post processing function to compute the metabolic energy consumption
+Results.E= GetMetabFromMRS(Results,Misc,modelmass);
+Results.Edot.genericMRS=Results.E.genericMRS.Bargh2004.Edot;
+
+Edot_normal      =Results.Edot.genericMRS;
+Edot_normal_TS   =sum(Edot_normal)/NMuscle;
+Edot_normal_mean =mean(Edot_normal_TS)*2; % 2 legs
+
+% objectives and helper
+aim_main=Edot_normal_mean;
+
+NDof      =size(Results.RActivation.genericMRS,1);
+helper_obs=sum(abs(Results.RActivation.genericMRS(:,fSel)))/NDof; % RA can be possitive (agonist) or negative (antagonist)
+aim_helper=sum(helper_obs,'all');
+
+J=aim_main+0.1*aim_helper;
 end
 
 % compute: actuator length and moment arm
