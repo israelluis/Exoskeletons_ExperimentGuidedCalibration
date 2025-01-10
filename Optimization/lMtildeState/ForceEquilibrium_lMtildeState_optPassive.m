@@ -1,5 +1,5 @@
 function [err, FT, Fpe, FMltilde, FMvtilde, cos_alpha] = ForceEquilibrium_lMtildeState_optPassive(a,...
-    lMtilde,vMtilde,lM_projected,lMT,params,kT,shift)
+    lMtilde,vMtilde,lM_projected,lMT,params,factor,kT,shift)
 % Hill-type muscle model: equilibrium between muscle and tendon forces
 % All muscle-tendon characteristics are fully described in the publication
 % and its online supplement
@@ -11,6 +11,8 @@ vMtildemax = params(:,5);
 kpe = params(:,6);
 so  = params(:,7);
 sM  = params(:,8);
+
+FM_factor=factor';
 
 % Hill-type muscle model: geometric relationships
 lM = lMtilde.*lMo;
@@ -27,7 +29,7 @@ fse = (exp(kT.*(lTtilde - 0.995)))/5-0.25+shift;
 Fce = a.*FMltilde.*FMvtilde;
 
 % Muscle force
-FM = Fce+Fpe;
+FM = Fce.*FM_factor+Fpe;
 
 % Tendon force
 FT = FMo.*fse;
